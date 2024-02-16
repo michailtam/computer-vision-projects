@@ -6,92 +6,122 @@ import numpy as np
 
 def onSelectPatch(action, x, y, flags, userdata):
     # Check for Left Btn Down event
+    global bg_changed
     if action == cv2.EVENT_LBUTTONDOWN:
-        global frame; global bgcolor
-        patch_size = 4
-        center_patch_x = int(patch_size/2)
-        center_patch_y = int(patch_size/2)
+        # Check if the background has changed.
+        if not bg_changed:
+            global frame; global mean_color; global green_upper; global patch_size; global saved_mean
 
-        # Extract the color of the patch and save it globaly.
-        patch = frame[x-center_patch_x:x, y-center_patch_y:y]
-        patch_hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
-        bgcolor = patch_hsv[int(patch_size/2)-1, int(patch_size/2)-1] # Select the color at the center of the patch
+            # Extract the color of the patch and save it globally.
+            patch = frame[x-int(patch_size/2):x+int(patch_size/2), y-int(patch_size/2):y+int(patch_size/2)]
+            patch_hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+            mean_color = np.mean(patch_hsv, axis=0) # Calculate the mean values of the HSV-patch
+            green_upper = np.array(np.mean(mean_color, axis=0), dtype=np.uint8) # Calculate the mean color of the upper green
+            saved_mean = green_upper
 
-def onChangeTolerance(*args):
-    global scaleFactor
-    scaleFactor = args[0]
+def onToleranceSlider(*args):
+    global green_upper; global green_lower; global saved_mean
+    if green_upper is not None:
+        green_upper = saved_mean
+        tolerance = args[0] * 2.55 # Convert the trackbar value to the range 0-255 the tolerance in percent.
+        # Calculate the green lower and upper bound using the tolerance.
+        green_lower = np.uint8(np.clip(green_upper - tolerance, 0,255))
+        green_upper = np.uint8(np.clip(green_upper + tolerance, 0,255))
 
+def onSoftnessSlider(*args):
+    global scaleFactorSoftness; global scaleFactorSoftness
+    if args[0] % 2:
+        scaleFactorSoftness = args[0]
+
+def onColorCast(*args):
+    global scaleFactorColCast
+    green_lower[1] = args[0] # Change the S-channel
+    green_lower[2] = args[0] # Channel the V-channel
+        
 def chromaKeying(image):
     # Create a mask based on the saved color.
-    global mask; global bgcolor; global image_bg
-    green_low = np.array(bgcolor, dtype=np.uint8)
-    green_high = np.array([70,255,255], dtype=np.uint8)
+    global mask; global image_bg; global green_lower; global green_upper; 
+    global bg_changed; global scaleFactorSoftness; global scaleFactorColCast
+
+    # Create the mask based on the green color.
     frame_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    frame_hsv = cv2.GaussianBlur(frame_hsv, (21,21), 0)
-    mask = cv2.inRange(frame_hsv, green_low, green_high)
+    mask = cv2.inRange(frame_hsv, green_lower, green_upper)
+    mask_inv = cv2.bitwise_not(mask)
 
-    # Smooth the mask.
+    # Apply morph and smooting operations.
     element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, element, iterations=5)
-    mask = cv2.dilate(mask, element, iterations=7)
-    
-    # Convert the masks to float32 and apply mathematical operations to achieve the result.
-    mask_3d = cv2.merge((mask, mask, mask))
-    mask_3d = np.float32(mask_3d)/255
-    image = np.float32(image)/255
-    masked_bg = cv2.multiply(image_bg, mask_3d) # Mask the background image to use
-    masked_fg = cv2.multiply(image, (1-mask_3d))
-    final = cv2.add(masked_bg, masked_fg)
+    mask_inv = cv2.morphologyEx(mask_inv, cv2.MORPH_OPEN, element, iterations=5)
+    mask_inv = cv2.erode(mask_inv, element, iterations=2)
+    mask = cv2.bitwise_not(mask_inv)
+    mask_inv = cv2.GaussianBlur(mask_inv, (scaleFactorSoftness,scaleFactorSoftness), 1)
 
-    cv2.imshow('test1', masked_bg)
-    cv2.imshow('test2', final)
-    return image
+    # Change the background by adding the foreground to the new background
+    fg = cv2.bitwise_and(image, image, mask=mask_inv)
+    bg = cv2.bitwise_and(image_bg, image_bg, mask=mask)
+    fg = np.float32(fg)/255
+    final_image = cv2.add(fg, bg)
+    bg_changed = True
+    return final_image
 
 
 if __name__ == "__main__":
-    
-    file_path = 'CVDL Master Program/Projects/Submissions/Chroma Keying'
-    video_file = os.path.join(file_path, 'greenscreen-asteroid.mp4')
-    bgimage_file = os.path.join(file_path, 'space.jpg')
+    video_file = 'greenscreen-asteroid.mp4'
+    bgimage_file = 'space.jpg'
 
+    # Create the video capturing device object and save the properties.
     cap = cv2.VideoCapture(video_file)
     frame_width = int(cap.get(3))
     frame_height = int(cap.get(4))
     _, frame = cap.read()
-    mask = np.zeros_like(frame[:,:,:1])
+    mask = np.zeros_like(frame[:,:,:1]) # Create the default mask
     
     # Load and resize the background image accordingly
-    image_bg = cv2.imread(bgimage_file, cv2.IMREAD_COLOR) 
+    image_bg = cv2.imread(bgimage_file, cv2.IMREAD_COLOR)
     if image_bg is not None:
         image_bg = cv2.resize(image_bg, (frame_width, frame_height), interpolation= cv2.INTER_LINEAR)
         image_bg = np.float32(image_bg)/255
     
+    # Setup the High GUI properties
     windowName = "Chrome Key"
     trackbarType = "Type: \n 0: Scale Up \n 1: Scale Down"
-    scaleFactor = 1
-    maxTolerance = 255
+    scaleFactorTolerance = 0
+    maxTolerance = 100 # in percent
+    scaleFactorSoftness = 1
+    maxSoftness = 100 # in percent
+    scaleFactorColCast = 236
+    maxColCast = 236
 
+    bg_changed = False # The flag which determines if the background has changed
+    patch_size = 10 # Initialize the patch size
+
+    # First setup the color range to be the maximum (i.e. everything in the frame gets shown)
+    green_lower = np.array([30,128,255], dtype=np.uint8)
+    green_upper = None
+    saved_mean = -1
+
+    # Setup the window properties.
     cv2.namedWindow(windowName, cv2.WINDOW_AUTOSIZE)
     cv2.setMouseCallback(windowName, onSelectPatch)
     
-    # Create sliders
-    cv2.createTrackbar("Tolerance", windowName, scaleFactor, maxTolerance, onChangeTolerance)
-    #cv2.createTrackbar("Softness", windowName, scaleFactor, maxTolerance, onChangeTolerance)
-    #cv2.createTrackbar("Color cast", windowName, scaleFactor, maxTolerance, onChangeTolerance)
-    #cv2.createTrackbar("Blur", windowName, 1, 25, onBlur) ## TEST
+    # Create the High GUI sliders.
+    cv2.createTrackbar("Tolerance", windowName, scaleFactorTolerance, maxTolerance, onToleranceSlider)
+    cv2.setTrackbarMin("Tolerance", windowName, 2) # Set the minimum trackbar value for the tolerance
+    cv2.createTrackbar("Softness", windowName, scaleFactorSoftness, maxSoftness, onSoftnessSlider)
+    cv2.createTrackbar("Color cast", windowName, scaleFactorColCast, maxColCast, onColorCast)
+    cv2.setTrackbarMin("Color cast", windowName, 80) # Set the minimum trackbar value for the color cast
 
-    bgcolor = None
-
+    # Read the frames and apply the desired operations.
     while cap.isOpened():
         ret, frame = cap.read() # Reads the next frame
 
         if ret == True:
-            if bgcolor is not None:
-                changed_frame = chromaKeying(frame)
-                cv2.imshow(windowName, changed_frame)
+            # Check if the color patch was selected.
+            if green_upper is not None:
+                frame_changed = chromaKeying(frame)
+                cv2.imshow(windowName, frame_changed)
             else:
                 cv2.imshow(windowName, frame)
-
+                
         key = cv2.waitKey(25)
 
         # If ESC key gets pressed.
