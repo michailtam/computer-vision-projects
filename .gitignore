@@ -1,0 +1,9 @@
+**/__pycache__/
+.ipynb_checkpoints
+
+notebook
+.vscode/
+[Ll]ogs/
+
+# Exclude specific folders
+**/[Tt]emp
