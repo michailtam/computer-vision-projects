@@ -17,10 +17,10 @@ In order to participate to the contest, at first I had to create a dataset consi
 ## Screenshots
 
 ### Images of the Dataset
-<img src="./img/sample_images.png" alt="Go Chase It (ROS) Video" width="520" border="0" />
+<img src="./img/sample_images.png" alt="Sample Images" width="520" border="0" />
 
 ### Training Result
-<img src="./img/loss_acc_lr.png" alt="Go Chase It (ROS) Video" width="760" border="0" />
+<img src="./img/loss_acc_lr.png" alt="Loss-Acc-LR" width="760" border="0" />
 
 ### Prediction Result
-<img src="./img/conf_matrix.png" alt="Go Chase It (ROS) Video" width="520" border="0" />
+<img src="./img/conf_matrix.png" alt="Confusion Matrix" width="520" border="0" />

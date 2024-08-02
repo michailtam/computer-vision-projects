@@ -34,13 +34,13 @@ notebook
 *.db
 
 # Exclude files
-*.jpg
-*.jpeg
-*.png
+#*.jpg
+#*.jpeg
+#*.png
 #*.gif
 #*.mp4
 #*.zip
 #*.avi
-*.pdf
+#*.pdf
 #*.iml
 #*.xml
